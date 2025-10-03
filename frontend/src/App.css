@@ -1,0 +1,48 @@
+.container { padding: 16px; font-family: system-ui, Arial, sans-serif; }
+.nav { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.nav a { text-decoration: none; color: #0366d6; }
+.nav button { margin-left: auto; }
+textarea, input { width: 100%; max-width: 480px; padding: 8px; margin: 6px 0; }
+button { padding: 8px 12px; cursor: pointer; }
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
