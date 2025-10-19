@@ -14,7 +14,10 @@ const leaderboardRoutes = require('./routes/leaderboard');
 const User = require('./models/User');
 
 const app = express();
+
+// for socket.io 
 const server = http.createServer(app);
+
 
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const ORIGINS = CORS_ORIGIN.split(',').map((s) => s.trim());
@@ -28,6 +31,8 @@ const corsOptions = {
   credentials: true,
 };
 
+
+// made a new seerver for socket 
 const io = new Server(server, {
   cors: {
     origin: ORIGINS.includes('*') ? '*' : ORIGINS,
@@ -49,32 +54,13 @@ mongoose
   .then(() => console.log('MongoDB connected'))
   .catch((err) => console.error('MongoDB connection error', err));
 
+
+// check connection health   
 app.get('/api/health', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/rooms/:code/finalize', async (req, res) => {
-  try {
-    const { code } = req.params;
-    const room = await Room.findOne({ code });
-    if (!room) return res.status(404).json({ error: 'Room not found' });
-    let game = await Game.findOne({ room: room._id });
-    if (!game) return res.status(400).json({ error: 'No game' });
-    room.state = 'finished';
-    await room.save();
-    const topScore = Math.max(0, ...game.scores.map((s) => s.score));
-    const winners = game.scores.filter((s) => s.score === topScore).map((s) => s.user);
-    for (const s of game.scores) {
-      await User.findByIdAndUpdate(s.user, {
-        $inc: { points: s.score, wins: winners.some((w) => String(w) === String(s.user)) ? 1 : 0 },
-      });
-    }
-    res.json({ winners, scores: game.scores });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
+
 
 const activeTimers = new Map();
 

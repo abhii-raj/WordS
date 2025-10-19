@@ -6,7 +6,7 @@ const gameSchema = new mongoose.Schema(
     scores: [
       {
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-        username: { type: String },
+        username: { type: String }, // a duplicacy can populate user to get username 
         score: { type: Number, default: 0 },
       },
     ],
@@ -20,6 +20,7 @@ const gameSchema = new mongoose.Schema(
       },
     ],
   },
+  // explain 
   { timestamps: true }
 );
 

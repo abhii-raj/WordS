@@ -23,7 +23,7 @@ const roomSchema = new mongoose.Schema(
     settings: {
       timerDuration: { type: Number, default: 15, min: 5, max: 30 }, // seconds
       wordsPerPlayer: { type: Number, default: 3, min: 3, max: 4 } // words per player
-    },
+    },  
   },
   { timestamps: true }
 );

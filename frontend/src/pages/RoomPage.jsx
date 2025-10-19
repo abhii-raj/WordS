@@ -2,53 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import { api, getToken } from '../lib/api'
+import { buildGrid } from '../utils/gridLogic'
+import Lobby from '../component/Lobby'
+import Entry from '../component/Entry'
+import Play from '../component/Play'
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000'
 
 // Build a simple word-search grid given a list of words
-function buildGrid(words, size = 8) {
-  const grid = Array.from({ length: size }, () => Array(size).fill(''))
-  const directions = [
-    [0, 1], [1, 0], [0, -1], [-1, 0], // horizontal/vertical
-    [1, 1], [1, -1], [-1, 1], [-1, -1], // diagonals
-  ]
-  const rand = (n) => Math.floor(Math.random() * n)
-
-  for (const raw of words) {
-    const word = String(raw || '').replace(/\s+/g, '').toUpperCase()
-    if (!word) continue
-    let placed = false
-    for (let attempt = 0; attempt < 200 && !placed; attempt++) {
-      const dir = directions[rand(directions.length)]
-      const startR = rand(size)
-      const startC = rand(size)
-      const endR = startR + dir[0] * (word.length - 1)
-      const endC = startC + dir[1] * (word.length - 1)
-      if (endR < 0 || endR >= size || endC < 0 || endC >= size) continue
-      let ok = true
-      for (let i = 0; i < word.length; i++) {
-        const r = startR + dir[0] * i
-        const c = startC + dir[1] * i
-        if (grid[r][c] && grid[r][c] !== word[i]) { ok = false; break }
-      }
-      if (!ok) continue
-      for (let i = 0; i < word.length; i++) {
-        const r = startR + dir[0] * i
-        const c = startC + dir[1] * i
-        grid[r][c] = word[i]
-      }
-      placed = true
-    }
-  }
-  // fill empty with random letters
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (!grid[r][c]) grid[r][c] = letters[rand(letters.length)]
-    }
-  }
-  return grid
-}
 
 export default function RoomPage() {
   const { code } = useParams()
@@ -89,6 +50,7 @@ export default function RoomPage() {
   }, [phase]);
 
   const socketRef = useRef(null)
+
   const userId = useMemo(() => {
     try {
       const token = getToken()
@@ -127,6 +89,7 @@ export default function RoomPage() {
       
       // Check if current user is ready
       const token = getToken()
+
       if (token) {
         try {
           const payload = JSON.parse(atob(token.split('.')[1]))
@@ -157,6 +120,7 @@ export default function RoomPage() {
       reconnectionDelay: 1000,
       reconnectionAttempts: 5
     })
+
     socketRef.current = s
     
     s.on('connect', () => {
@@ -198,6 +162,7 @@ export default function RoomPage() {
         setPlayerWords(payload.playerWords || [])
         setRoomSettings(payload.settings || { timerDuration: 15, wordsPerPlayer: 3 })
         setChatMessages(payload.chatMessages || [])
+        //third fallback
         if (payload.phase === 'play' && payload.words?.length > 0 && !gridBuiltRef.current) {
           setGrid(buildGrid(payload.words || []))
           gridBuiltRef.current = true
@@ -304,6 +269,8 @@ export default function RoomPage() {
     }, 1000);
     return () => clearInterval(interval);
   }, [phase, phaseEnd, code]);
+
+
 
   const addWords = () => {
     if (phase !== 'entry' || timer <= 0) return
@@ -621,7 +588,7 @@ export default function RoomPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center border border-red-200">
-          <div className="text-red-500 text-xl mb-4">⚠️</div>
+          <div className="text-red-500 text-xl mb-4">Warning</div>
           <p className="text-lg text-red-600 mb-4">{error}</p>
           <button 
             onClick={() => window.location.reload()} 
@@ -637,404 +604,28 @@ export default function RoomPage() {
   // --- PHASE 0: LOBBY ---
   if (phase === 'lobby') {
     return (
-      <div className="flex flex-col lg:flex-row items-start justify-center min-h-[60vh] gap-6 px-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl flex flex-col items-center border border-gray-200">
-          <h2 className="text-3xl font-extrabold mb-6 tracking-tight text-center">Room Lobby</h2>
-          
-          <div className="w-full mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-700">Room Code</h3>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-mono font-extrabold px-4 py-2 rounded-xl bg-blue-100 text-blue-700 border-2 border-blue-200">
-                  {code}
-                </span>
-                <button
-                  onClick={copyRoomCode}
-                  className="copy-room-button px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors border border-gray-300"
-                  title="Copy room code"
-                >
-                  📋 Copy
-                </button>
-              </div>
-            </div>
-            
-            <div className="mb-6">
-              <h3 className="text-xl font-bold text-gray-700 mb-3">Players ({players.length})</h3>
-              <div className="grid gap-2">
-                {players.map((player, index) => {
-                  const playerIsReady = playersReady.some(id => id === (player._id || player.id))
-                  return (
-                    <div key={player._id || index} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold">
-                          {(player.username || 'P')[0].toUpperCase()}
-                        </div>
-                        <span className="font-semibold">{player.username || 'Player'}</span>
-                        {player._id === (room?.host?._id || room?.host) && (
-                          <span className="px-2 py-1 text-xs font-bold rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200">
-                            HOST
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {playerIsReady ? (
-                          <span className="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700 border border-green-200">
-                            ✓ READY
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 text-xs font-bold rounded-full bg-gray-100 text-gray-600 border border-gray-200">
-                            NOT READY
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-            
-            {/* Ready button for all players */}
-            <div className="flex justify-center mb-4">
-              <button
-                onClick={toggleReady}
-                disabled={connectionStatus !== 'connected'}
-                className={`px-6 py-3 rounded-xl font-bold transition-all duration-200 shadow-lg hover:shadow-xl active:transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isPlayerReady 
-                    ? 'bg-green-500 hover:bg-green-600 text-white' 
-                    : 'bg-gray-500 hover:bg-gray-600 text-white'
-                }`}
-              >
-                {isPlayerReady ? '✓ Ready' : 'Ready Up'}
-              </button>
-            </div>
-            
-            {isHost && (
-              <div className="space-y-4">
-                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                  <h4 className="font-bold text-gray-700 mb-3">Game Settings</h4>
-                  
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-600 mb-1">
-                        Entry Timer: {roomSettings.timerDuration} seconds
-                      </label>
-                      <input
-                        type="range"
-                        min="5"
-                        max="30"
-                        value={roomSettings.timerDuration}
-                        onChange={(e) => {
-                          const newSettings = { ...roomSettings, timerDuration: parseInt(e.target.value) }
-                          setRoomSettings(newSettings)
-                          updateSettings(newSettings)
-                        }}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>5s</span>
-                        <span>30s</span>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-600 mb-1">
-                        Words per Player: {roomSettings.wordsPerPlayer}
-                      </label>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            const newSettings = { ...roomSettings, wordsPerPlayer: 3 }
-                            setRoomSettings(newSettings)
-                            updateSettings(newSettings)
-                          }}
-                          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                            roomSettings.wordsPerPlayer === 3 
-                              ? 'bg-blue-500 text-white' 
-                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                          }`}
-                        >
-                          3
-                        </button>
-                        <button
-                          onClick={() => {
-                            const newSettings = { ...roomSettings, wordsPerPlayer: 4 }
-                            setRoomSettings(newSettings)
-                            updateSettings(newSettings)
-                          }}
-                          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                            roomSettings.wordsPerPlayer === 4 
-                              ? 'bg-blue-500 text-white' 
-                              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                          }`}
-                        >
-                          4
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex gap-3">
-                  <button
-                    className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={() => {
-                      if (socketRef.current && userId) {
-                        socketRef.current.emit('start_game', { roomCode: code, userId })
-                      }
-                    }}
-                    disabled={
-                      players.length < 1 || 
-                      isLoading || 
-                      connectionStatus !== 'connected' || 
-                      playersReady.length !== players.length
-                    }
-                    title={
-                      playersReady.length !== players.length 
-                        ? `Waiting for ${players.length - playersReady.length} more players to ready up`
-                        : 'Start the game'
-                    }
-                  >
-                    {playersReady.length === players.length ? '🚀 Start Game' : `⏳ Waiting (${playersReady.length}/${players.length})`}
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            {!isHost && (
-              <div className="space-y-4">
-                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                  <h4 className="font-bold text-gray-700 mb-3">Game Settings</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Entry Timer:</span>
-                      <span className="font-semibold">{roomSettings.timerDuration} seconds</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Words per Player:</span>
-                      <span className="font-semibold">{roomSettings.wordsPerPlayer}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="text-center p-4 bg-blue-50 rounded-xl border border-blue-200">
-                  <p className="text-blue-700 font-semibold">Waiting for host to start the game...</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-        
-        {/* Chat sidebar */}
-        <ChatComponent className="w-full max-w-sm lg:max-w-xs h-96" />
-      </div>
+      <Lobby code = {code}  copyRoomCode = {copyRoomCode} players = {players}  room ={room} isLoading={isLoading}
+              toggleReady={toggleReady} connectionStatus ={connectionStatus} isPlayerReady={isPlayerReady}
+              isHost={isHost} roomSettings={roomSettings} socketRef={socketRef} userId={userId} playersReady={playersReady}
+              ChatComponent={ChatComponent}
+      />
     )
   }
 
   // --- PHASE 1: WORD ENTRY ---
   if (phase === 'entry') {
     return (
-      <div className="flex flex-col lg:flex-row items-start justify-center min-h-[60vh] gap-6 px-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg flex flex-col items-center border border-gray-200">
-          <h2 className="text-3xl font-extrabold mb-4 tracking-tight">Word Entry</h2>
-          <div className="mb-6 flex items-center gap-4">
-            <span className={`text-5xl font-mono font-extrabold px-6 py-2 rounded-2xl shadow-lg border-2 border-blue-200 ${timer > 5 ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700 animate-pulse'}`}>{timer}</span>
-            <span className="text-lg text-gray-500">seconds left</span>
-          </div>
-          <div className="w-full flex flex-col gap-3 mb-3">
-            <textarea
-              className="w-full rounded-lg border-2 border-blue-200 px-4 py-3 resize-none text-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
-              rows={2}
-              placeholder="Type words, comma or newline separated"
-              value={inputWords}
-              onChange={e => setInputWords(e.target.value)}
-              disabled={timer <= 0}
-              onKeyDown={e => { 
-                if (e.key === 'Enter' && !e.shiftKey) { 
-                  e.preventDefault(); 
-                  addWords(); 
-                } 
-              }}
-            />
-            <div className="flex gap-2">
-              <button
-                className="flex-1 rounded-lg bg-blue-600 text-white px-4 py-2 text-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition"
-                onClick={addWords}
-                disabled={timer <= 0 || !inputWords.trim() || getCurrentUserWordCount() >= roomSettings.wordsPerPlayer}
-              >
-                Add Words
-              </button>
-              <button
-                className="rounded-lg border border-blue-400 px-4 py-2 text-lg font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition"
-                onClick={submitAndStart}
-                disabled={timer <= 0}
-              >
-                Submit & Start
-              </button>
-            </div>
-          </div>
-          {error && (
-            <div className="w-full mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-600 text-sm font-medium">{error}</p>
-            </div>
-          )}
-          <div className="w-full flex flex-wrap gap-1 min-h-[40px] mb-2 justify-center max-w-md">
-            {words.length === 0 ? (
-              <p className="text-gray-500 text-sm">No words added yet</p>
-            ) : (
-              words.map((w, i) => (
-                <span key={w + i} className="bg-blue-100 text-blue-700 rounded-full px-2 py-1 text-sm font-semibold shadow animate-fade-in border border-blue-200 transition-all duration-200 hover:bg-blue-200">{w}</span>
-              ))
-            )}
-          </div>
-          <div className="text-sm text-gray-500 mb-2">
-            {words.length}/{roomSettings.wordsPerPlayer * players.length} words • {playerSubmissions.length}/{players.length} players submitted
-          </div>
-          {timer <= 0 && <div className="mt-2 text-red-600 font-semibold text-lg animate-pulse">⏰ Entry Phase Locked</div>}
-        </div>
-        
-        {/* Chat sidebar */}
-        <ChatComponent className="w-full max-w-sm lg:max-w-xs h-96" />
-      </div>
+      <Entry   inputWords ={inputWords}  timer ={timer}  addWords= {addWords} roomSettings ={roomSettings}
+       submitAndStart ={submitAndStart} words={words}  error={error}  players={players}  playerSubmissions={playerSubmissions}
+       ChatComponent={ChatComponent}
+       />
     )
+      
   }
 
   // --- PHASE 2: PLAY ---
   return (
-    <div className="flex flex-col lg:flex-row gap-8 lg:gap-6 items-start w-full max-w-7xl mx-auto py-8">
-      <div className="md:w-80 w-full space-y-6">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold tracking-tight">Room {code}</h2>
-            <button
-              onClick={copyRoomCode}
-              className="copy-room-button px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs font-medium transition-colors border border-gray-300"
-              title="Copy room code"
-            >
-              📋
-            </button>
-          </div>
-          <div className={`flex items-center gap-2 text-sm ${
-            connectionStatus === 'connected' ? 'text-green-600' : 
-            connectionStatus === 'connecting' ? 'text-yellow-600' : 'text-red-600'
-          }`}>
-            <div className={`w-2 h-2 rounded-full ${
-              connectionStatus === 'connected' ? 'bg-green-500' : 
-              connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
-            }`}></div>
-            {connectionStatus === 'connected' ? 'Online' : 
-             connectionStatus === 'connecting' ? 'Connecting...' : 'Offline'}
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-          <h3 className="font-semibold mb-2 text-lg">Find These Words</h3>
-          <div className="flex flex-wrap gap-2">
-            {memoWords.map((w, i) => (
-              <span key={w + i} className={`px-4 py-2 rounded-full text-base font-semibold border transition-all duration-200 ${found.has(w.toUpperCase()) ? 'bg-green-100 text-green-700 line-through border-green-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>{w}</span>
-            ))}
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
-          <h3 className="font-semibold mb-2 text-lg">Scoreboard</h3>
-          {scores.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No scores yet</p>
-          ) : (
-            <ul className="text-base text-gray-700 divide-y">
-              {scores
-                .sort((a, b) => b.score - a.score) // Sort by score descending
-                .map((s, index) => (
-                <li key={s.user} className={`flex justify-between items-center py-3 ${index === 0 ? 'bg-yellow-50 -mx-2 px-2 rounded-lg' : ''}`}>
-                  <div className="flex items-center gap-2">
-                    {index === 0 && <span className="text-yellow-500">👑</span>}
-                    <span className={`font-bold ${index === 0 ? 'text-yellow-700' : ''}`}>
-                      {s.username || s.user}
-                    </span>
-                  </div>
-                  <span className={`font-semibold ${index === 0 ? 'text-yellow-700' : 'text-blue-600'}`}>
-                    {s.score}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        {isHost && (
-          <button 
-            className="w-full mt-2 rounded-lg border-2 border-blue-400 px-4 py-2 text-lg font-semibold text-blue-700 hover:bg-blue-50 hover:border-blue-500 active:bg-blue-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={resetGame}
-            disabled={isLoading || connectionStatus !== 'connected'}
-          >
-            {isLoading ? '🔄 Resetting...' : '🔄 New Round'}
-          </button>
-        )}
-        <button 
-          className="w-full mt-2 rounded-lg border-2 border-green-400 px-4 py-2 text-lg font-semibold text-green-700 hover:bg-green-50 hover:border-green-500 active:bg-green-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={finalizeGame}
-          disabled={isLoading || connectionStatus !== 'connected' || scores.length === 0}
-        >
-          {scores.length === 0 ? '📊 No Scores to Save' : '🏆 Finalize Game'}
-        </button>
-      </div>
-      <div className="flex-1 flex items-center justify-center">
-        <div className="bg-white rounded-2xl shadow-2xl p-6 border border-gray-200 flex flex-col items-center">
-          <div className="inline-grid select-none gap-3" style={{ gridTemplateColumns: `repeat(${memoGrid[0]?.length || 8}, minmax(2.8rem, 1fr))` }} onMouseLeave={() => setSelecting([])} onMouseUp={endSelect}>
-            {memoGrid.flatMap((row, r) => row.map((ch, c) => {
-              const selected = selecting.some(cell => cell.r === r && cell.c === c)
-              const selectionIndex = selecting.findIndex(cell => cell.r === r && cell.c === c)
-              const isStart = selectionIndex === 0
-              const isEnd = selectionIndex === selecting.length - 1 && selecting.length > 1
-              
-              // Check if this cell is part of any found word path
-              let isPartOfFoundWord = false
-              for (const foundWordData of foundPaths) {
-                if (foundWordData.path && foundWordData.path.some(cell => cell.r === r && cell.c === c)) {
-                  isPartOfFoundWord = true
-                  break
-                }
-              }
-              
-              // Fallback for words found before path tracking was implemented
-              if (!isPartOfFoundWord && foundPaths.length === 0) {
-                for (const foundWord of found) {
-                  if (foundWord.includes(ch)) {
-                    isPartOfFoundWord = true
-                    break
-                  }
-                }
-              }
-              
-              return (
-                <button
-                  key={`${r}-${c}`}
-                  onMouseDown={startSelect(r, c)}
-                  onMouseEnter={extendSelect(r, c)}
-                  className={`w-11 h-11 md:w-12 md:h-12 border-2 text-sm md:text-base font-extrabold flex items-center justify-center rounded-md transition-all duration-150 
-                    ${selected 
-                      ? `bg-gradient-to-br from-yellow-200 to-yellow-300 border-yellow-500 shadow-xl scale-105 ${isStart ? 'ring-2 ring-green-400' : ''} ${isEnd ? 'ring-2 ring-red-400' : ''}` 
-                      : isPartOfFoundWord 
-                        ? 'bg-green-100 border-green-400 text-green-800' 
-                        : 'bg-white hover:bg-blue-50 border-gray-200 hover:border-blue-300'
-                    }`}
-                  style={{ 
-                    boxShadow: selected 
-                      ? '0 4px 20px rgba(251, 191, 36, 0.4), 0 0 12px 2px #fde047' 
-                      : isPartOfFoundWord 
-                        ? '0 2px 8px rgba(34, 197, 94, 0.2)' 
-                        : undefined,
-                    transform: selected ? 'scale(1.05) translateZ(0)' : undefined
-                  }}
-                >
-                  {ch}
-                </button>
-              )
-            }))}
-          </div>
-        </div>
-      </div>
-      
-      {/* Chat sidebar for play phase */}
-      <div className="lg:w-80 w-full">
-        <ChatComponent className="h-96" />
-      </div>
-    </div>
+    <Play/>
   )
+    
 }
